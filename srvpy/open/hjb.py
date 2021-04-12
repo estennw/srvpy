@@ -182,7 +182,7 @@ class Registration:
         Computes the inner product between the srv representations of the
         curves.
         """
-        return hjbdata.ip(self.q1,self.q2).sum()
+        return self.ip(self.q1,self.q2).sum()
 
 
     def distance(self):

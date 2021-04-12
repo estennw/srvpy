@@ -1,5 +1,5 @@
 # srvpy
 
-The `srvpy` package contains tool for numerical computations in the Square Root Velocity Framework.
+The `srvpy` package contains tool for numerical computations in the Square Root Velocity Framework. The package is built using `numpy vectorization and can work with both point data and callables.”
 
-The current version supports analysis of open curves with fixed rotation, including registration of curves and computation of shape space geodesics and geodesic distances. It does not support analysis of closed curves, or curves modulo rotation. 
+The current version supports analysis of open curves with fixed rotation, including registration of curves and computation of shape space geodesics and geodesic distances. It does not support analysis of closed curves, or curves modulo rotation.
