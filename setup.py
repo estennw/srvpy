@@ -6,14 +6,14 @@ import setuptools
 long_description = ""
 
 setuptools.setup(
-    name="srvf", # Replace with your own username
+    name="srvpy", # Replace with your own username
     version="0.0.1",
     author="Esten Nicolai Wøien",
     author_email="esten.n.woien@ntnu.no",
     description="A package for shape analysis using the Square Root Velocity Framework",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/estennw/srvf",
+    url="https://github.com/estennw/srvpy",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
