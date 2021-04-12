@@ -1,7 +1,6 @@
 """
-This submodule contains base tools for numerical integration of the
-differential
-equations in the SRVF. The methods accepts and returns vectorized data only.
+This submodule contains objects for the numerical registration of curves and
+computation of shape space geodesics in the Square Root Velocity Framework.
 """
 
 # External dependencies:
@@ -15,8 +14,8 @@ from .schemes import *
 
 class Registration:
     """
-    Array with necessary methods to align curves throught solution of the HJB
-    equation.
+    Object with necessary methods to register curves and compute geodesics in
+    the Square Root Velocity Framework. The
 
     Attributes
     ----------
@@ -24,9 +23,14 @@ class Registration:
         Point evaluations of the curves.
     q1, q2 : ndarray
         SRV representation of the curves.
+
+    Methods
+    -------
+    setup(scheme,x1=None,x2=None)
+        Computes the SRV representation of the curves.
     """
 
-    def __init__(self,c1,c2,l1=None,l2=None):
+    def __init__(self,c1,c2,l1=None,l2=None,x1=None,x2=None):
         """
         Initializes the Registration object from point data.
 
@@ -50,11 +54,20 @@ class Registration:
         self.l1 = l1
         self.l2 = l2
         self.shape = (c1.shape[0],c2.shape[0])
+        self.setup(x1,x2)
 
-    def setup(self,scheme,x1=None,x2=None):
 
-        self.scheme = scheme
+    def setup(self,x1=None,x2=None):
+        """
+        Constructs interpolation objects for the curves, and computes their
+        SRV representations.
 
+        Parameters
+        ----------
+        x1, x2 : ndarray (n+1,), optional
+            Grid points for the evlaluation of the curves. If not specified,
+            a uniform grid is assumed.
+        """
         self.x1 = x1 if x1 is not None else np.linspace(0,1,self.shape[0])
         self.x2 = x2 if x2 is not None else np.linspace(0,1,self.shape[1])
 
@@ -74,24 +87,23 @@ class Registration:
         # specified
         self.computeSRV()
 
+
     def computeSRV(self):
+        """
+        Computes the SRV representation of the curves.
+        """
 
-        v = np.diff(self.c1,axis=0)
-        vv = self.ip(v,v)
-        vv[vv==0] = 1
-        q = v*vv**-.25 if self.ndim==1 else v*vv[:,None]**-.25
+        l1 = 1 if self.l1 is None else self.l1
+        self.q1 = self.c2srv(self.c1,l1)
         if self.l1 is None:
-            self.l1 = np.sqrt(vv).sum()
-        self.q1 = q / np.sqrt(self.l1)
+            self.l1 = self.ip(q,q).sum()
+            self.q1 /= np.sqrt(self.l1)
 
-        v = np.diff(self.c2,axis=0)
-        vv = self.ip(v,v)
-        vv[vv==0] = 1
-        q = v*vv**-.25 if self.ndim==1 else v*vv[:,None]**-.25
-        if self.l2 is None:
-            self.l2 = np.sqrt(vv).sum()
-        self.q2 = q / np.sqrt(self.l2)
-
+        l2 = 1 if self.l2 is None else self.l2
+        self.q2 = self.c2srv(self.c2,l2)
+        if self.l1 is None:
+            self.l1 = self.ip(q,q).sum()
+            self.q1 /= np.sqrt(self.l1)
 
 
     def c2srv(self,c,length):
@@ -144,7 +156,10 @@ class Registration:
         """
         Resamples the curves given a reparametrisation path phi.
 
-
+        Parameters
+        ---------
+        phi : ndarray (k,2)
+            Reparametrisation path.
         """
 
         # If phi is normalized, i.e. if phi is computed with respect to
@@ -161,6 +176,7 @@ class Registration:
         self.u = None
         self.shape = (phi.shape[0],phi.shape[0])
 
+
     def inner_product(self):
         """
         Computes the inner product between the srv representations of the
@@ -169,22 +185,40 @@ class Registration:
         return hjbdata.ip(self.q1,self.q2).sum()
 
 
-    def register(self):
+    def distance(self):
+        """
+        Computes the pre-shape space distance between the curves.
+        """
+        return np.arccos(min(1,self.inner_product()))
+
+
+    def register(self,scheme=None):
         """
         Registrates the two curves. This method solves the HJB equation, then
         run the backtracking method to obtain the reparametrization path, and
         finally resamples the curves according to the backtracking procedure.
+
+        Parameters
+        scheme : Scheme, optional
+            Changes the current scheme
         """
-        self.solveHJB()
+        self.solveHJB(scheme)
         phi = self.backtrackHJB()
         self.resample(phi)
 
 
-    def solveHJB(self):
+    def solveHJB(self,scheme=None):
         """
         Approximates viscosity solutions of the Hamilton-Jacobi-Bellman for the
         value function.
+
+        Parameters
+        scheme : Scheme, optional
+            Changes the current scheme
         """
+
+        if scheme is not None:
+            self.scheme = scheme
 
         # Initialize the value function
         self.u = np.zeros(self.shape)
@@ -202,8 +236,13 @@ class Registration:
 
     def backtrackHJB(self,phi1=None):
         """
-        Backtracks equation.
+        Backtracks the HJB equation.
 
+        Parameters
+        ----------
+        phi1 : arraylike (2,), optional
+            The terminal condition (and starting point) of the backtracking. If
+            not specified, phi1 is set to (1,1).
         """
 
         n = self.shape[0]-1

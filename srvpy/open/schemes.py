@@ -1,6 +1,7 @@
 """
-This submodule contains base tools for numerical integration of the differential
-equations in the SRVF. The methods accepts and returns vectorized data only.
+This submodule contains base tools for numerical integration of the Hamilton-
+Jacobi-Bellman equation in the Square Root Velocity Framework. The methods
+accepts and returns vectorized data only.
 """
 
 # External dependencies:
@@ -9,6 +10,18 @@ import numpy as np
 
 
 class Scheme:
+    """
+    Object containing at least two methods: 'update' and 'alpha'.
+
+    Methods
+    -------
+    update(u,reg,i,j):
+        Computes the value function u[i,j] by approximating local solutions
+        to the HJB equation.
+    alpha(u,reg,i,j):
+        Computes the maximizer alpha corresponding to the solution of the
+        approximated HJB equation.
+    """
     filterCompatible = False
     eps = np.finfo(float).eps
 
