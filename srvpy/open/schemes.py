@@ -184,8 +184,10 @@ class VInf(Scheme):
         v10 /= 2*np.sqrt(v11)+Scheme.eps
         fh2 = hjbdata[i,j]**2
         if v01>=v10:
-            return 1,min(1,fh2/(4*(v01-v00)**2+Scheme.eps))
-        return min(1,fh2/(4*(v10-v00)**2+Scheme.eps)),1
+            a1,a2 = 1,min(1,fh2/(4*(v01-v00)**2+Scheme.eps))
+        else:
+            a1,a2 = min(1,fh2/(4*(v10-v00)**2+Scheme.eps)),1
+        return a1/(a1+a2), a2/(a1+a2)
 
 
 class V2b(Scheme):

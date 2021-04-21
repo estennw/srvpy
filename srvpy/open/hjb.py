@@ -5,11 +5,12 @@ computation of shape space geodesics in the Square Root Velocity Framework.
 
 # External dependencies:
 import numpy as np
-from math import gcd, ceil
+from math import gcd, ceil, floor
 from scipy.interpolate import interp1d
 
 # Internal dependencies:
 from .schemes import *
+
 
 
 class Registration:
@@ -71,17 +72,19 @@ class Registration:
         self.x1 = x1 if x1 is not None else np.linspace(0,1,self.shape[0])
         self.x2 = x2 if x2 is not None else np.linspace(0,1,self.shape[1])
 
-        # Construct interpolations of the curves
-        self.c1f = interp1d(self.x1,self.c1)
-        self.c2f = interp1d(self.x1,self.c2)
+        # Construct interpolations of the curves)
+        self.c1f = interp1d(self.x1,self.c1,kind='linear',axis=0)
+        self.c2f = interp1d(self.x1,self.c2,kind='linear',axis=0)
 
         # Construct the riemannian metric for the parameter space
         if self.c1.ndim == 1:
             self.ndim = 1
             self.ip = lambda q1,q2: (q1*q2.conj()).real
+            self.op = lambda q1,q2: q1*q2.conj()
         else:
             self.ndim = self.c1.shape[1]
-            self.ip = lambda q1,q2: (q1*q2).sum(axis=1)
+            self.ip = lambda q1,q2: (q1*q2.conj()).real.sum(axis=-1)
+            self.op = lambda q1,q2: q1@q2.transpose()
 
         # Compute the SRV representations and estimate the lengths if not
         # specified
@@ -94,19 +97,19 @@ class Registration:
         """
 
         l1 = 1 if self.l1 is None else self.l1
-        self.q1 = self.c2srv(self.c1,l1)
+        self.q1 = self.c_to_srv(self.c1,l1)
         if self.l1 is None:
-            self.l1 = self.ip(q,q).sum()
+            self.l1 = self.ip(self.q1,self.q1).sum()
             self.q1 /= np.sqrt(self.l1)
 
         l2 = 1 if self.l2 is None else self.l2
-        self.q2 = self.c2srv(self.c2,l2)
-        if self.l1 is None:
-            self.l1 = self.ip(q,q).sum()
-            self.q1 /= np.sqrt(self.l1)
+        self.q2 = self.c_to_srv(self.c2,l2)
+        if self.l2 is None:
+            self.l2 = self.ip(self.q2,self.q2).sum()
+            self.q2 /= np.sqrt(self.l2)
 
 
-    def c2srv(self,c,length):
+    def c_to_srv(self,c,length):
         """
         Computes the square root velocity representation given point
         evaluations of the curve.
@@ -121,10 +124,10 @@ class Registration:
         q : ndarray (n,) or ndarray (n,d)
             The square root velocity representation q = dc/sqrt(l*|dc|).
         """
-        return self.v2srv(np.diff(c),length)
+        return self.v_to_srv(np.diff(c,axis=0),length)
 
 
-    def v2srv(self,v,length):
+    def v_to_srv(self,v,length):
         """
         Computes the square root velocity representation given point
         evaluations of the derivatives of the curve.
@@ -170,10 +173,9 @@ class Registration:
         self.c2 = self.c2f(self.x2)
 
         # Resample the srv representation
-        self.q1 = self.c2srv(self.c1,self.l1)
-        self.q2 = self.c2srv(self.c2,self.l2)
+        self.q1 = self.c_to_srv(self.c1,self.l1)
+        self.q2 = self.c_to_srv(self.c2,self.l2)
 
-        self.u = None
         self.shape = (phi.shape[0],phi.shape[0])
 
 
@@ -202,12 +204,12 @@ class Registration:
         scheme : Scheme, optional
             Changes the current scheme
         """
-        self.solveHJB(scheme)
-        phi = self.backtrackHJB()
+        self.solve_hjb(scheme)
+        phi = self.backtrack_hjb()
         self.resample(phi)
 
 
-    def solveHJB(self,scheme=None):
+    def solve_hjb(self,scheme=None):
         """
         Approximates viscosity solutions of the Hamilton-Jacobi-Bellman for the
         value function.
@@ -221,7 +223,7 @@ class Registration:
             self.scheme = scheme
 
         # Initialize the value function
-        self.u = np.zeros(self.shape)
+        self.value = np.zeros(self.shape)
         n = self.shape[0]-1
         m = self.shape[1]-1
 
@@ -229,12 +231,12 @@ class Registration:
         for k in range(2,n+m+1):
             i = np.arange(max(k-m,1), min(k,n+1))
             j = np.arange(max(k-n,1), min(k,m+1))[::-1]
-            self.scheme.update(self.u,self,i,j)
+            self.scheme.update(self.value,self,i,j)
 
-        return self.u
+        return self.value
 
 
-    def backtrackHJB(self,phi1=None):
+    def _backtrack_hjb(self,phi1=None):
         """
         Backtracks the HJB equation.
 
@@ -274,7 +276,8 @@ class Registration:
                 i = i-1
                 continue
 
-            a1,a2 = self.scheme.alpha(self.u,self,i,j)
+            """
+            a1,a2 = self.scheme.alpha(self.value,self,i,j)
             if a1==a2==0:
                 a1 = 1
 
@@ -285,27 +288,134 @@ class Registration:
             else:
                 phi[k-1] = west
 
+
+            continue
+            """
+            h1 = phi[k,0]-self.x1[i]
+            h2 = phi[k,1]-self.x2[j]
+
+            a1,a2 = self.scheme.alpha(self.value,self,i+1,j+1)
+            if a1==a2==0:
+                a1 = 1
+
+            b = h2*a1 - h1*a2
+            if a2<=0 or phi[k,1]==0:
+                phi[k-1] = self.x1[i],phi[k,1]
+            elif a1<=0 or phi[k,0]==0:
+                phi[k-1] = phi[k,0],self.x2[j]
+            elif b>=0:
+                phi[k-1] = self.x1[i], self.x2[j] + b/a1
+            else:
+                phi[k-1] = self.x1[i] - b/a2, self.x2[j]
+
             if phi[k-1][0] == self.x1[i]:
                 i = i-1
             if phi[k-1][1] == self.x2[j]:
                 j = j-1
 
-            continue
+        return phi
 
-            b = h2*a1 - h1*a2
-            if a2<=0 or phi[k,1]==0:
-                phi[k-1] = i-1,phi[k,1]
-            elif a1<=0 or phi[k,0]==0:
-                phi[k-1] = phi[k,0],j-1
-            elif b>=0:
-                phi[k-1] = i-1, j-1 + b/a1
+
+    def backtrack_hjb(self,phi1=None):
+        """
+        Backtracks the HJB equation.
+
+        Parameters
+        ----------
+        phi1 : arraylike (2,), optional
+            The terminal condition (and starting point) of the backtracking. If
+            not specified, phi1 is set to (1,1).
+        """
+
+        n = self.shape[0]-1
+        m = self.shape[1]-1
+        psi = np.zeros(n+m+1)
+        phi = np.zeros((n+m+1,2))
+        phi[-1,:] = (n,m)
+        eps = np.finfo(float).eps
+
+        for k in reversed(range(1,n+m+1)):
+
+            # Chech if we have reached the south or west boundary
+            if k+psi[k]==0:
+                psi[k-1] = -(k-1)
+                continue
+            if k-psi[k]==0:
+                psi[k-1] = k-1
+                continue
+
+            phi1 = 0.5*(k+psi[k])
+            phi2 = 0.5*(k-psi[k])
+            i = int(floor(phi1))
+            j = int(floor(phi2))
+            if phi1 == i:
+                dpsi = np.diff(self.scheme.alpha(self.value,self,i,j))
             else:
-                phi[k-1] = i-1 - b/a2, j-1
+                dpsir = np.diff(self.scheme.alpha(self.value,self,i+1,j))
+                dpsil = np.diff(self.scheme.alpha(self.value,self,i,j+1))
+                h1 = phi1-i
+                dpsi = h1*dpsir + (1-h1)*dpsil
+
+            psi[k-1] = np.clip(psi[k]+dpsi,-(k-1),k-1)
+
+        k = np.arange(n+m+1)
+        phi = np.c_[interp1d(2*np.arange(n+1),self.x1)(k+psi),
+                    interp1d(2*np.arange(m+1),self.x2)(k-psi)]
 
         return phi
 
 
-    def preshapeGeodesicSRV(self,tau):
+    def backtrack_hjb2(self,phi1=None):
+        """
+        Backtracks the HJB equation.
+
+        Parameters
+        ----------
+        phi1 : arraylike (2,), optional
+            The terminal condition (and starting point) of the backtracking. If
+            not specified, phi1 is set to (1,1).
+        """
+
+        n = self.shape[0]-1
+        m = self.shape[1]-1
+        psi = np.zeros(n+m+1)
+        phi = np.zeros((n+m+1,2))
+        phi[-1,:] = (n,m)
+        eps = np.finfo(float).eps
+
+        for k in reversed(range(1,n+m+1)):
+
+            # Chech if we have reached the south or west boundary
+            if k+psi[k]==0:
+                psi[k-1] = -(k-1)
+                continue
+            if k-psi[k]==0:
+                psi[k-1] = k-1
+                continue
+
+            phi1 = 0.5*(k+psi[k])
+            phi2 = 0.5*(k-psi[k])
+            i = int(floor(phi1))
+            j = int(floor(phi2))
+
+            if phi1 == i:
+                dpsi = np.diff(self.scheme.alpha(self.value,self,i,j))
+            else:
+                dpsir = np.diff(self.scheme.alpha(self.value,self,i+1,j))
+                dpsil = np.diff(self.scheme.alpha(self.value,self,i,j+1))
+                h1 = phi1-i
+                dpsi = h1*dpsir + (1-h1)*dpsil
+
+            psi[k-1] = np.clip(psi[k]+dpsi,-(k-1),k-1)
+
+        k = np.arange(n+m+1)
+        phi = np.c_[interp1d(2*np.arange(n+1),self.x1)(k+psi),
+                    interp1d(2*np.arange(m+1),self.x2)(k-psi)]
+
+        return phi
+
+
+    def preshape_geodesic_srv(self,tau):
         """
         Computes the srv representation of the preshape geodesic between two
         curves with respect to the current parametrization.
@@ -314,15 +424,23 @@ class Registration:
         ----------
         tau : ndarray
         """
-        dist = np.arccos(min(1,self.ip(self.q1,self.q2).sum()))
-        w1 = 1-tau if dist == 0 else np.sin(dist*(1-tau))/np.sin(dist)
-        w2 =   tau if dist == 0 else np.sin(dist*   tau )/np.sin(dist)
+        dist = self.distance()
+        dist = 0
+        if dist==0:
+            w = lambda t: t
+        else:
+            w = lambda t: np.sin(dist*t)/np.sin(dist)
 
-        q = self.q1[:,None]*w1[None,:] + self.q2[:,None]*w2[None,:]
+        if self.ndim == 1:
+            tau = tau[:,None]
+            q = self.q1[None,:]*w(1-tau) + self.q2[None,:]*w(tau)
+        else:
+            tau = tau[:,None,None]
+            q = self.q1[None,:,:]*w(1-tau) + self.q2[None,:,:]*w(tau)
         return q
 
 
-    def preshapeGeodesic(self,tau):
+    def preshape_geodesic(self,tau,translation='c0'):
         """
         Computes the preshape geodesic between two curves with respect to the
         current parametrization.
@@ -330,24 +448,60 @@ class Registration:
         Parameters
         ----------
         tau : ndarray
+
+        Returns
+        -------
+        gamma : ndarray
         """
 
         # Pre-shape space geodesic
-        q = self.preshapeGeodesicSRV(tau)
-        c = np.cumsum(q*np.sqrt(self.ip(q,q)),axis=0)
+        q = self.preshape_geodesic_srv(tau)
+        gamma = np.cumsum(q*np.sqrt(self.ip(q,q)),axis=1)
 
         # Scale space geodesic
         length = np.exp((1-tau)*np.log(self.l1) + tau*np.log(self.l2))
-        c *= length[None,:]
+        if self.ndim==1:
+            gamma *= length[:,None]
+        else:
+            gamma *= length[:,None,None]
 
         # Rotation space geodesic
 
 
         # Translation space
-        c0 = (1-tau)*self.c1[[0]] + tau*self.c2[[0]]
-        c += c0[None,:]
+        if translation=='c0':
+            c0 = (1-tau)*self.c1[[0]] + tau*self.c2[[0]]
+        elif translation=='cm':
+            c0 = -0.5*np.sum(
+                (gamma[1:,:]+gamma[:-1,:])*np.abs(np.diff(gamma,axis=0)),axis=0
+            )/length
+        if self.ndim==1:
+            gamma += c0[:,None]
+        else:
+            gamma += c0[:,None,None]
 
-        return c
+        return gamma
+
+
+    def geodesic(self,tau,scheme=None):
+        """
+        Computes the shape space geodesic between the two shapes represented by
+        the curves. The curves are optimally reparametrised, and the pre-shape
+        space geodesics are computed and returned.
+        """
+
+        self.register(scheme)
+        return self.preshape_geodesic(tau)
+
+
+    def orient(self):
+
+        if self.ndim == 1:
+            O = self.op(self.q1,self.q2)
+            self.O *= O
+            self.q2 *= O/np.abs(O)
+
+
 
 
 class Registrationf(Registration):

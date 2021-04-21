@@ -1,24 +1,28 @@
 import setuptools
 
-#with open("README.md", "r") as fh:
-#    long_description = fh.read()
+VERSION = "0.0.1"
+AUTHOR = "Esten Nicolai Wøien"
+EMAIL = "esten.n.woien@ntnu.no"
 
-long_description = ""
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
 
 setuptools.setup(
-    name="srvpy", # Replace with your own username
+    name="srvpy",
     version="0.0.1",
-    author="Esten Nicolai Wøien",
-    author_email="esten.n.woien@ntnu.no",
-    description="A package for shape analysis using the Square Root Velocity Framework",
+    author=AUTHOR,
+    author_email=EMAIL,
+    description="A collection of tools for shape analysis in the Square Root Velocity Framework",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/estennw/srvpy",
+    url="https://gitlab.com/estennw/srvpy",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
+        "Topic :: Scientific/Engineering :: Mathematics",
     ],
     python_requires='>=3.7',
 )
