@@ -41,7 +41,7 @@ class Filter(Scheme):
         H = self.mscheme.hamiltonian(u,hjbdata,i,j)
         H[u[i,j]<np.maximum(u[i,j-1],u[i-1,j])] = np.inf
         x1,x2 = hjbdata.x1,hjbdata.x2
-        b = np.abs(H) > self.tol*np.sqrt((x1[i]-x1[i-1])*(x2[j]-x2[j-1]))**(1+self.order)
+        b = np.abs(H) > self.tol*((x1[i]-x1[i-1])*(x2[j]-x2[j-1]))**(0.5+0.5*self.order)
         self.mscheme.update(u,hjbdata,i[b],j[b])
 
     def alpha(self,u,hjbdata,i,j):
@@ -87,26 +87,41 @@ class DDP(Scheme):
 class U1(Scheme):
     type = "u"
     monotone = True
+    def __str__():
+        return "U1"
     def update(u,hjbdata,i,j):
         u01,u10 = u[i-1,j],u[i,j-1]
         u[i,j] = 0.5*(u01 + u10 + np.sqrt((u01 - u10)**2 + hjbdata[i,j]**2))
+    def solve(u,hjbdata,i,j):
+        u01,u10 = u[i-1,j],u[i,j-1]
+        return 0.5*(u01 + u10 + np.sqrt((u01 - u10)**2 + hjbdata[i,j]**2))
     def hamiltonian(u,hjbdata,i,j):
         u01,u10 = u[i-1,j],u[i,j-1]
         return 0.5*(u01 + u10 + np.sqrt((u01 - u10)**2 + hjbdata[i,j]**2)) - u[i,j]
     def alpha(u,hjbdata,i,j):
         u01,u10 = u[i-1,j],u[i,j-1]
         fh2 = hjbdata[i,j]**2
-        return (1 + (u01-u10)/np.sqrt((u01-u10)**2 + fh2 + Scheme.eps),
-                1 + (u10-u01)/np.sqrt((u01-u10)**2 + fh2 + Scheme.eps))
+        if u10==u10==fh2==0:
+            return (1,0)
+        return (0.5 + 0.5*(u01-u10)/np.sqrt((u01-u10)**2 + fh2),
+                0.5 + 0.5*(u10-u01)/np.sqrt((u01-u10)**2 + fh2))
+
 
 class UInf(Scheme):
     type = "u"
     monotone = True
+    def __str__():
+        return "UInf"
     def update(u,hjbdata,i,j):
         u0,u1 = u[i-1,j-1],np.maximum(u[i-1,j],u[i,j-1])
         fh = hjbdata[i,j]
         ufh2 = np.minimum(0.25*fh**2,(u1-u0)**2)
         u[i,j] = np.maximum(u1 + ufh2/(u1-u0+Scheme.eps),u0+fh)
+    def solve(u,hjbdata,i,j):
+        u0,u1 = u[i-1,j-1],np.maximum(u[i-1,j],u[i,j-1])
+        fh = hjbdata[i,j]
+        ufh2 = np.minimum(0.25*fh**2,(u1-u0)**2)
+        return np.maximum(u1 + ufh2/(u1-u0+Scheme.eps),u0+fh)
     def hamiltonian(u,hjbdata,i,j):
         u0,u1 = u[i-1,j-1],np.maximum(u[i-1,j],u[i,j-1])
         fh = hjbdata[i,j]
@@ -116,8 +131,10 @@ class UInf(Scheme):
         u00,u01,u10 = u[i-1,j-1],u[i-1,j],u[i,j-1]
         fh2 = hjbdata[i,j]**2
         if u01>=u10:
-            return 1,min(1,fh2/(4*(u01-u00)**2+Scheme.eps))
-        return min(1,fh2/(4*(u10-u00)**2+Scheme.eps)),1
+            a1,a2 = 1,min(1,fh2/(4*(u01-u00)**2+Scheme.eps))
+        else:
+            a1,a2 = min(1,fh2/(4*(u10-u00)**2+Scheme.eps)),1
+        return a1/(a1+a2), a2/(a1+a2)
 
 class U2(Scheme):
     type = "u"
@@ -127,14 +144,16 @@ class U2(Scheme):
     def alpha(u,hjbdata,i,j):
         u01,u10 = u[i-1,j],u[i,j-1]
         fh2 = hjbdata[i,j]**2
-        return (1 + (u01-u10)/np.sqrt((u01-u10)**2 + fh2 + Scheme.eps),
-                1 + (u10-u01)/np.sqrt((u01-u10)**2 + fh2 + Scheme.eps))
+        return (0.5 + 0.5*(u01-u10)/np.sqrt((u01-u10)**2 + fh2),
+                0.5 + 0.5*(u10-u01)/np.sqrt((u01-u10)**2 + fh2))
 
 
 
 class V1(Scheme):
     type = "v"
     monotone = True
+    def __str__():
+        return "V1"
     def update(v,hjbdata,i,j):
         v01,v10 = v[i-1,j],v[i,j-1]
         fh2 = hjbdata[i,j]**2
@@ -153,13 +172,57 @@ class V1(Scheme):
         v10 = v[i,j-1]
         v11 = v[i,j]
         fh2 = hjbdata[i,j]**2
-        return (1 + (v01-v10)/np.sqrt((v01-v10)**2 + 4*v11*fh2 + Scheme.eps),
-                1 + (v10-v01)/np.sqrt((v01-v10)**2 + 4*v11*fh2 + Scheme.eps))
+        if v10==v10==fh2==0:
+            return (1,0)
+        return (0.5 + 0.5*(v01-v10)/np.sqrt((v01-v10)**2 + 4*v11*fh2),
+                0.5 + 0.5*(v10-v01)/np.sqrt((v01-v10)**2 + 4*v11*fh2))
+
+
+class V12(Scheme):
+    type = "v"
+    monotone = True
+    def __str__():
+        return "V12"
+    def update(v,hjbdata,i,j):
+        v11 = v[i-1,j-1]
+        v02 = np.maximum.reduce([v11,v[np.maximum(i-2,0),j],v[i,np.maximum(j-2,0)]])
+        fh2 = 4*hjbdata[i,j]**2
+        v[i,j] = 0.5*(2*v11 + fh2 +
+                      np.sqrt(4*(v02 - v11)**2 +
+                              4*v11*fh2 +
+                              fh2**2))
+    def hamiltonian(v,hjbdata,i,j):
+        v01,v10,v11 = v[i-1,j],v[i,j-1],v[i,j]
+        v01 /= 2*np.sqrt(v11)+Scheme.eps
+        v10 /= 2*np.sqrt(v11)+Scheme.eps
+        v11 /= 2*np.sqrt(v11)+Scheme.eps
+        return 0.5*(v01+v10 + np.sqrt((v01 - v10)**2 + hjbdata[i,j]**2)) - v11
+    def alpha(v,hjbdata,i,j):
+        v01 = v[i-1,j]
+        v10 = v[i,j-1]
+        v11 = v[i,j]
+        fh2 = hjbdata[i,j]**2
+        if v10==v10==fh2==0:
+            return (1,0)
+        return (0.5 + 0.5*(v01-v10)/np.sqrt((v01-v10)**2 + 4*v11*fh2),
+                0.5 + 0.5*(v10-v01)/np.sqrt((v01-v10)**2 + 4*v11*fh2))
+
 
 
 class VInf(Scheme):
     type = "v"
     monotone = True
+    def __str__():
+        return "VInf"
+    def solve(v,f,i,j):
+        fh = f[i,j]
+        fh2 = fh**2
+        v0 = v[i-1,j-1]
+        v1 = np.maximum(v[i-1,j],v[i,j-1])
+        stable = v1*fh2 < (v1-v0)*(v1-v0-fh2)
+        v11 = (fh + np.sqrt(fh2+v0))**2
+        v11[stable] = (v1[stable]*(v1[stable]-v0[stable]))/(v1[stable]-v0[stable]-fh2[stable]+Scheme.eps)
+        return np.maximum(v11,v1)
     def update(v,hjbdata,i,j):
         fh = hjbdata[i,j]
         fh2 = fh**2
@@ -183,6 +246,7 @@ class VInf(Scheme):
         v01 /= 2*np.sqrt(v11)+Scheme.eps
         v10 /= 2*np.sqrt(v11)+Scheme.eps
         fh2 = hjbdata[i,j]**2
+
         if v01>=v10:
             a1,a2 = 1,min(1,fh2/(4*(v01-v00)**2+Scheme.eps))
         else:
