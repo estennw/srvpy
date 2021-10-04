@@ -214,24 +214,17 @@ class VInf(Scheme):
     monotone = True
     def __str__():
         return "VInf"
-    def solve(v,f,i,j):
-        fh = f[i,j]
+    def solve(solver,i,j):
+        fh = solver.f(i,j)
         fh2 = fh**2
-        v0 = v[i-1,j-1]
-        v1 = np.maximum(v[i-1,j],v[i,j-1])
+        v0 = solver.value[i-1,j-1]
+        v1 = np.maximum(solver.value[i-1,j],solver.value[i,j-1])
         stable = v1*fh2 < (v1-v0)*(v1-v0-fh2)
         v11 = (fh + np.sqrt(fh2+v0))**2
         v11[stable] = (v1[stable]*(v1[stable]-v0[stable]))/(v1[stable]-v0[stable]-fh2[stable]+Scheme.eps)
         return np.maximum(v11,v1)
-    def update(v,hjbdata,i,j):
-        fh = hjbdata[i,j]
-        fh2 = fh**2
-        v0 = v[i-1,j-1]
-        v1 = np.maximum(v[i-1,j],v[i,j-1])
-        stable = v1*fh2 < (v1-v0)*(v1-v0-fh2)
-        v11 = (fh + np.sqrt(fh2+v0))**2
-        v11[stable] = (v1[stable]*(v1[stable]-v0[stable]))/(v1[stable]-v0[stable]-fh2[stable]+Scheme.eps)
-        v[i,j] = np.maximum(v11,v1)
+
+
     def hamiltonian(v,hjbdata,i,j):
         v0,v1,v11 = v[i-1,j-1],np.maximum(v[i,j-1],v[i-1,j]),v[i,j]
         v0 /= 2*np.sqrt(v11)+Scheme.eps
@@ -240,6 +233,8 @@ class VInf(Scheme):
         fh = hjbdata[i,j]
         ufh2 = np.minimum(0.25*fh**2,(v1-v0)**2)
         return np.maximum(v1 + ufh2/(v1-v0+Scheme.eps),v0+fh) - v11
+
+
     def alpha(v,hjbdata,i,j):
         v00,v01,v10,v11 = v[i-1,j-1],v[i-1,j],v[i,j-1],v[i,j]
         v00 /= 2*np.sqrt(v11)+Scheme.eps

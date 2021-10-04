@@ -13,6 +13,9 @@ import numbers
 from .schemes import *
 
 
+
+
+
 class HJBSolver:
     """
     Class with necessary methods to register curves and compute geodesics in
@@ -51,7 +54,7 @@ class HJBSolver:
         for k in range(2,n+m+1):
             i = np.arange(max(k-m,1), min(k,n+1))
             j = np.arange(max(k-n,1), min(k,m+1))[::-1]
-            self.value[i,j] = self.scheme.solve(self.value,self,i,j)
+            self.value[i,j] = self.scheme.solve(self,i,j)
 
         return self.value
 
@@ -65,6 +68,9 @@ class HJBSolver:
         # Initialize the value function
         self.value = np.zeros(self.shape)
         n = self.shape[0]-1
+        m = self.shape[1]-1
+
+        assert n==m, "The strip-based solver only works with "
 
         if w is None:
             w = n
@@ -72,9 +78,9 @@ class HJBSolver:
         # Iterate through the anti-diagonals of the array.
         for k in range(2,2*n+2):
             wk = np.min([w,k-2,2*n+2-k])
-            i = np.arange(int(floor(max((k-wk)/2,1))),int(ceil(min((k+wk)/2,n)+1)))
+            i = np.arange(int(floor(max((k-wk)/2,1))), int(ceil(min((k+wk)/2,n)+1)))
             j = i[::-1]
-            self.scheme.update(self.value,self,i,j)
+            self.scheme.update(self,i,j)
 
         return self.value
 
@@ -203,6 +209,9 @@ class HJBSolver:
         phi = self.backtrack_hjb()
         self.resample(phi[:,0],phi[:,1])
 
+    def f(self, i, j):
+        return np.maximum(self.ip(self.q1sdt[i-1],self.q2sdt[j-1]),0)
+
     def __getitem__(self, i):
         """
         Returns max(fij * sqrt(dxi * dyj), 0).
@@ -320,7 +329,7 @@ class HJBSolverQ(HJBSolver):
         return np.maximum(self.ip(self.q1sdt[i[0]-1],self.q2sdt[i[1]-1]),0)
 
 
-    def geodesic(self,tau,output='curve',length='invariant'):
+    def geodesic(self,tau,output='curve',length='invariant',shift=False):
         """
         Computes
         """
@@ -329,9 +338,7 @@ class HJBSolverQ(HJBSolver):
         if self.unit_sphere:
             dist = self.distance()
             if dist==0:
-                if self.ndim == 1:
-                    return 0*tau[:,None] + self.q1sdt[None,:]
-                return 0*tau[:,None,None] + self.q1sdt[None,:,:]
+                w = lambda t: t
             w = lambda t: np.sin(dist*t)/np.sin(dist)
         else:
             w = lambda t: t
@@ -362,6 +369,10 @@ class HJBSolverQ(HJBSolver):
         elif (output)=='curve':
             if self.ndim == 1:
                 c = np.cumsum(q*np.sqrt(self.ip(q,q)),axis=1)
+                if shift is not False:
+                    width = c.real.ptp(axis=1)
+                    width += shift*width.mean()
+                    c += width.cumsum()[:,None]
             else:
                 c = np.cumsum(q*np.sqrt(self.ip(q,q))[:,:,None],axis=1)
             return c
